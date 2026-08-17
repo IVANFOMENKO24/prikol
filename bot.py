@@ -18,7 +18,8 @@ if not API_TOKEN:
     raise RuntimeError("Не задан BOT_TOKEN. Укажите токен бота в переменной окружения.")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MEDIA_DIR = os.getenv("MEDIA_DIR", BASE_DIR)
+DEFAULT_MEDIA_DIR = "/app/media" if (os.name != "nt" and os.path.isdir("/app/media")) else BASE_DIR
+MEDIA_DIR = os.getenv("MEDIA_DIR", DEFAULT_MEDIA_DIR)
 
 _IS_WINDOWS = os.name == "nt"
 
@@ -41,7 +42,7 @@ def media_path(filename):
     if _looks_like_windows_abs(filename):
         if os.path.isfile(filename):
             return filename
-        basename = os.path.basename(filename)
+        basename = filename.replace("\\", "/").rsplit("/", 1)[-1]
         if basename and basename != filename:
             return os.path.join(MEDIA_DIR, basename)
         return filename
@@ -135,7 +136,7 @@ FFMPEG_INSTALL_HINT = (
 )
 
 MEDIA_HINT = (
-    "📁 Медиафайлы не найдены. Положите их в папку MEDIA_DIR (по умолчанию — папка с ботом),\n"
+    "📁 Медиафайлы не найдены. Положите их в папку MEDIA_DIR (по умолчанию — /app/media в Docker и папка с ботом локально),\n"
     "либо задайте полные пути через переменные окружения BASE_VIDEO_1, BASE_VIDEO_2, BASE_VIDEO_3\n"
     "и SPIDER_SOUNDS (разделитель — ;  или ,  или :).\n"
     "Ожидаемые файлы:\n"
