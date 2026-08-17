@@ -22,10 +22,6 @@ wheels/
 .installed.cfg
 *.egg
 
-# Keep media dir structure but ignore media contents
-media/*
-!media/.gitkeep
-
 # Virtual environments
 venv/
 env/
@@ -47,3 +43,6 @@ Thumbs.db
 .env.local
 *.secret
 docker-compose.override.yml
+
+# Large file warning: GitHub has a 100MB per-file hard limit and a 2GB repo soft limit.
+# If your media exceeds this, use Git LFS or a separate storage (S3, Drive, etc.).

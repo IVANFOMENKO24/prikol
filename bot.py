@@ -13,7 +13,9 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 FFMPEG_BIN = os.getenv("FFMPEG_BIN", "ffmpeg")
 FFPROBE_BIN = os.getenv("FFPROBE_BIN", "ffprobe")
 
-API_TOKEN = os.getenv("BOT_TOKEN", "8469254637:AAH38u632eQb7la4_Tm6HJY0L1dMGyV_8-4")
+API_TOKEN = os.getenv("BOT_TOKEN")
+if not API_TOKEN:
+    raise RuntimeError("Не задан BOT_TOKEN. Укажите токен бота в переменной окружения.")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MEDIA_DIR = os.getenv("MEDIA_DIR", BASE_DIR)
