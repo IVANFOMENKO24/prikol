@@ -18,30 +18,106 @@ API_TOKEN = os.getenv("BOT_TOKEN", "8469254637:AAH38u632eQb7la4_Tm6HJY0L1dMGyV_8
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MEDIA_DIR = os.getenv("MEDIA_DIR", BASE_DIR)
 
+_IS_WINDOWS = os.name == "nt"
+
+
+def _looks_like_windows_abs(path):
+    if not isinstance(path, str) or len(path) < 2:
+        return False
+    if path[1] == ":" and path[0].isalpha():
+        return True
+    if path.startswith("\\\\") or path.startswith("//"):
+        return True
+    return False
+
 
 def media_path(filename):
+    if filename is None:
+        return filename
     if os.path.isabs(filename):
+        return filename
+    if _looks_like_windows_abs(filename):
+        if os.path.isfile(filename):
+            return filename
+        basename = os.path.basename(filename)
+        if basename and basename != filename:
+            return os.path.join(MEDIA_DIR, basename)
         return filename
     return os.path.join(MEDIA_DIR, filename)
 
 
-BASE_VIDEO_1 = media_path(os.getenv("BASE_VIDEO_1", r"C:\Users\иванка\Downloads\фигура\да слез\эдиь\123\сайт\сайт 2\эд\мемасы\рендер\прикол\прикол.mov"))
-BASE_VIDEO_2 = media_path(os.getenv("BASE_VIDEO_2", r"C:\Users\иванка\Downloads\фигура\да слез\эдиь\123\сайт\сайт 2\эд\мемасы\рендер\прикол\прикол2.mov"))
-BASE_VIDEO_3 = media_path(os.getenv("BASE_VIDEO_3", r"C:\Users\иванка\Downloads\фигура\да слез\эдиь\123\сайт\сайт 2\эд\мемасы\рендер\прикол\прикол3.mov"))
-
-DEFAULT_SPIDER_SOUNDS = [
+DEFAULT_BASE_VIDEOS_WIN = {
+    1: r"C:\Users\иванка\Downloads\фигура\да слез\эдиь\123\сайт\сайт 2\эд\мемасы\рендер\прикол\прикол.mov",
+    2: r"C:\Users\иванка\Downloads\фигура\да слез\эдиь\123\сайт\сайт 2\эд\мемасы\рендер\прикол\прикол2.mov",
+    3: r"C:\Users\иванка\Downloads\фигура\да слез\эдиь\123\сайт\сайт 2\эд\мемасы\рендер\прикол\прикол3.mov",
+}
+DEFAULT_BASE_VIDEOS_UNIX = {
+    1: "прикол.mov",
+    2: "прикол2.mov",
+    3: "прикол3.mov",
+}
+DEFAULT_SPIDER_WIN = [
     r"C:\Users\иванка\Downloads\фигура\да слез\эдиь\123\сайт\сайт 2\эд\мемасы\рендер\прикол\прико\паук1.WAV",
     r"C:\Users\иванка\Downloads\фигура\да слез\эдиь\123\сайт\сайт 2\эд\мемасы\рендер\прикол\прико\паук2.WAV",
     r"C:\Users\иванка\Downloads\фигура\да слез\эдиь\123\сайт\сайт 2\эд\мемасы\рендер\прикол\прико\паук3.WAV",
     r"C:\Users\иванка\Downloads\фигура\да слез\эдиь\123\сайт\сайт 2\эд\мемасы\рендер\прикол\прико\паук4.WAV",
     r"C:\Users\иванка\Downloads\фигура\да слез\эдиь\123\сайт\сайт 2\эд\мемасы\рендер\прикол\прико\паук5.mp3",
 ]
+DEFAULT_SPIDER_UNIX = [
+    "паук1.WAV",
+    "паук2.WAV",
+    "паук3.WAV",
+    "паук4.WAV",
+    "паук5.mp3",
+]
+
+_default_videos = DEFAULT_BASE_VIDEOS_WIN if _IS_WINDOWS else DEFAULT_BASE_VIDEOS_UNIX
+_default_spider = DEFAULT_SPIDER_WIN if _IS_WINDOWS else DEFAULT_SPIDER_UNIX
+
+
+def _resolve_default_win_fallback(user_env, fallback_win, fallback_unix_basename):
+    if user_env is not None:
+        return user_env
+    if _IS_WINDOWS:
+        return fallback_win
+    win_exists = os.path.isfile(fallback_win)
+    return fallback_win if win_exists else fallback_unix_basename
+
+
+BASE_VIDEO_1 = media_path(
+    _resolve_default_win_fallback(
+        os.getenv("BASE_VIDEO_1"), DEFAULT_BASE_VIDEOS_WIN[1], DEFAULT_BASE_VIDEOS_UNIX[1]
+    )
+)
+BASE_VIDEO_2 = media_path(
+    _resolve_default_win_fallback(
+        os.getenv("BASE_VIDEO_2"), DEFAULT_BASE_VIDEOS_WIN[2], DEFAULT_BASE_VIDEOS_UNIX[2]
+    )
+)
+BASE_VIDEO_3 = media_path(
+    _resolve_default_win_fallback(
+        os.getenv("BASE_VIDEO_3"), DEFAULT_BASE_VIDEOS_WIN[3], DEFAULT_BASE_VIDEOS_UNIX[3]
+    )
+)
 
 SPIDER_SOUNDS_ENV = os.getenv("SPIDER_SOUNDS")
 if SPIDER_SOUNDS_ENV:
-    SPIDER_SOUNDS = [media_path(p.strip()) for p in SPIDER_SOUNDS_ENV.split(";") if p.strip()]
+    import re as _re
+    _parts = _re.split(r"[;,:]", SPIDER_SOUNDS_ENV)
+    SPIDER_SOUNDS = [media_path(p.strip()) for p in _parts if p.strip()]
 else:
-    SPIDER_SOUNDS = [media_path(p) for p in DEFAULT_SPIDER_SOUNDS]
+    _resolved = []
+    for s in _default_spider:
+        mp = media_path(s)
+        if os.path.isfile(mp):
+            _resolved.append(mp)
+    if not _resolved:
+        base_names = [os.path.basename(s) for s in DEFAULT_SPIDER_WIN]
+        for b in base_names:
+            p = os.path.join(MEDIA_DIR, b)
+            if os.path.isfile(p):
+                _resolved.append(p)
+    SPIDER_SOUNDS = _resolved or [media_path(s) for s in base_names]
 
 OUTPUT_DIR = os.getenv("OUTPUT_DIR", os.path.join(BASE_DIR, "processed"))
 
@@ -54,6 +130,16 @@ FFMPEG_INSTALL_HINT = (
     "  • macOS (brew):   brew install ffmpeg\n"
     "  • Windows:        скачайте с https://www.gyan.dev/ffmpeg/builds/ и добавьте bin в PATH\n"
     "Либо задайте пути через переменные окружения FFMPEG_BIN и FFPROBE_BIN."
+)
+
+MEDIA_HINT = (
+    "📁 Медиафайлы не найдены. Положите их в папку MEDIA_DIR (по умолчанию — папка с ботом),\n"
+    "либо задайте полные пути через переменные окружения BASE_VIDEO_1, BASE_VIDEO_2, BASE_VIDEO_3\n"
+    "и SPIDER_SOUNDS (разделитель — ;  или ,  или :).\n"
+    "Ожидаемые файлы:\n"
+    "  • прикол.mov, прикол2.mov, прикол3.mov — базовые видео\n"
+    "  • паук1.WAV, паук2.WAV, паук3.WAV, паук4.WAV, паук5.mp3 — звуки для фото\n"
+    "Пример (Docker/хостинг): положите все файлы рядом с bot.py или в /app/media/ и выставьте MEDIA_DIR=/app/media"
 )
 
 user_data = {}
@@ -385,13 +471,20 @@ async def main():
         for e in errors:
             logging.error("  • " + e)
         logging.error("=========================================")
-        logging.error(FFMPEG_INSTALL_HINT)
+        _need_ffmpeg = any(e.startswith("ffmpeg") or e.startswith("ffprobe") for e in errors)
+        _need_media = any(("не найден" in e) and ("BASE_VIDEO" in e or "SPIDER_SOUNDS" in e) for e in errors)
+        if _need_ffmpeg:
+            logging.error(FFMPEG_INSTALL_HINT)
+        if _need_media:
+            logging.error(MEDIA_HINT)
         raise RuntimeError("Ошибки конфигурации: " + "; ".join(errors))
 
     logging.info(f"Using ffmpeg:  {_ff}")
     logging.info(f"Using ffprobe: {_fp}")
     logging.info(f"Media dir:     {MEDIA_DIR}")
     logging.info(f"Output dir:    {OUTPUT_DIR}")
+    logging.info(f"Base videos:   {BASE_VIDEO_1}, {BASE_VIDEO_2}, {BASE_VIDEO_3}")
+    logging.info(f"Spider sounds ({len(SPIDER_SOUNDS)}): {SPIDER_SOUNDS}")
     logging.info("Starting bot...")
     await dp.start_polling(bot)
 

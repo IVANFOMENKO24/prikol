@@ -22,6 +22,10 @@ wheels/
 .installed.cfg
 *.egg
 
+# Keep media dir structure but ignore media contents
+media/*
+!media/.gitkeep
+
 # Virtual environments
 venv/
 env/
@@ -42,3 +46,4 @@ Thumbs.db
 .env
 .env.local
 *.secret
+docker-compose.override.yml

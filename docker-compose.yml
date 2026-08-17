@@ -1,0 +1,16 @@
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN:-}
+      - MEDIA_DIR=/app/media
+      - OUTPUT_DIR=/tmp/prikol_out
+      # - FFMPEG_BIN=/usr/bin/ffmpeg
+      # - FFPROBE_BIN=/usr/bin/ffprobe
+      # - BASE_VIDEO_1=прикол.mov
+      # - BASE_VIDEO_2=прикол2.mov
+      # - BASE_VIDEO_3=прикол3.mov
+      # - SPIDER_SOUNDS=паук1.WAV;паук2.WAV;паук3.WAV;паук4.WAV;паук5.mp3
+    volumes:
+      - ./media:/app/media:ro
