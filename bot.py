@@ -10,8 +10,32 @@ from aiogram.filters import Command
 from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-FFMPEG_BIN = os.getenv("FFMPEG_BIN", "ffmpeg")
-FFPROBE_BIN = os.getenv("FFPROBE_BIN", "ffprobe")
+
+def detect_binary_path(binary_name):
+    configured = os.getenv(binary_name.upper() + "_BIN")
+    if configured:
+        return configured
+
+    found = shutil.which(binary_name)
+    if found:
+        return found
+
+    common_dirs = [
+        "/usr/bin",
+        "/usr/local/bin",
+        "/bin",
+        "/opt/homebrew/bin",
+    ]
+    for directory in common_dirs:
+        candidate = os.path.join(directory, binary_name)
+        if os.path.isfile(candidate):
+            return candidate
+
+    return binary_name
+
+
+FFMPEG_BIN = detect_binary_path("ffmpeg")
+FFPROBE_BIN = detect_binary_path("ffprobe")
 
 API_TOKEN = os.getenv("BOT_TOKEN")
 if not API_TOKEN:
