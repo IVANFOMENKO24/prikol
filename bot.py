@@ -4,17 +4,31 @@ import os
 import subprocess
 import json
 import random
+import re
 import shutil
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+try:
+    import imageio_ffmpeg
+except ImportError:
+    imageio_ffmpeg = None
+
 
 def detect_binary_path(binary_name):
     configured = os.getenv(binary_name.upper() + "_BIN")
     if configured:
         return configured
+
+    if binary_name == "ffmpeg" and imageio_ffmpeg is not None:
+        try:
+            bundled = imageio_ffmpeg.get_ffmpeg_exe()
+            if bundled and os.path.isfile(bundled):
+                return bundled
+        except Exception:
+            pass
 
     found = shutil.which(binary_name)
     if found:
@@ -181,7 +195,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 def check_binary(bin_path, name):
-    if os.path.isabs(bin_path):
+    if os.path.isabs(bin_path) or os.path.sep in bin_path or (os.path.altsep and os.path.altsep in bin_path):
         if not os.path.isfile(bin_path):
             return None
         return bin_path
@@ -197,8 +211,6 @@ def check_required_files():
     fp = check_binary(FFPROBE_BIN, "ffprobe")
     if not ff:
         errors.append(f"ffmpeg не найден: '{FFMPEG_BIN}'")
-    if not fp:
-        errors.append(f"ffprobe не найден: '{FFPROBE_BIN}'")
 
     for label, path in [
         ("BASE_VIDEO_1", BASE_VIDEO_1),
@@ -228,37 +240,67 @@ async def run_subprocess(*cmd):
         return -1, b"", b"", str(e)
 
 
-async def get_duration(file_path):
-    cmd = [
-        FFPROBE_BIN, "-v", "error", "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1", file_path
-    ]
+def _ffmpeg_duration_to_seconds(duration_text):
+    match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", duration_text)
+    if not match:
+        return 0.0
+    hours = int(match.group(1))
+    minutes = int(match.group(2))
+    seconds = float(match.group(3))
+    return hours * 3600 + minutes * 60 + seconds
+
+
+async def _probe_with_ffmpeg(file_path):
+    cmd = [FFMPEG_BIN, "-hide_banner", "-i", file_path, "-f", "null", "-"]
     code, stdout, stderr, err = await run_subprocess(*cmd)
     if err:
-        logging.error(f"get_duration subprocess error: {err}")
+        logging.error(f"ffmpeg probe subprocess error: {err}")
         raise RuntimeError(err)
-    if code == 0:
-        try:
-            return float(stdout.decode().strip())
-        except ValueError:
-            return 0.0
-    logging.error(f"ffprobe error (code {code}): {stderr.decode(errors='replace')}")
+    output = (stdout + stderr).decode(errors="replace")
+    return code, output
+
+
+async def get_duration(file_path):
+    if check_binary(FFPROBE_BIN, "ffprobe"):
+        cmd = [
+            FFPROBE_BIN, "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1", file_path
+        ]
+        code, stdout, stderr, err = await run_subprocess(*cmd)
+        if err:
+            logging.error(f"get_duration subprocess error: {err}")
+            raise RuntimeError(err)
+        if code == 0:
+            try:
+                return float(stdout.decode().strip())
+            except ValueError:
+                return 0.0
+        logging.error(f"ffprobe error (code {code}): {stderr.decode(errors='replace')}")
+
+    code, output = await _probe_with_ffmpeg(file_path)
+    duration = _ffmpeg_duration_to_seconds(output)
+    if duration > 0:
+        return duration
+    logging.error(f"ffmpeg duration probe failed (code {code}): {output}")
     return 0.0
 
 
 async def has_audio(file_path):
-    cmd = [
-        FFPROBE_BIN, "-v", "error", "-select_streams", "a",
-        "-show_entries", "stream=index", "-of", "csv=p=0", file_path
-    ]
-    code, stdout, stderr, err = await run_subprocess(*cmd)
-    if err:
-        logging.error(f"has_audio subprocess error: {err}")
-        raise RuntimeError(err)
-    if code != 0:
+    if check_binary(FFPROBE_BIN, "ffprobe"):
+        cmd = [
+            FFPROBE_BIN, "-v", "error", "-select_streams", "a",
+            "-show_entries", "stream=index", "-of", "csv=p=0", file_path
+        ]
+        code, stdout, stderr, err = await run_subprocess(*cmd)
+        if err:
+            logging.error(f"has_audio subprocess error: {err}")
+            raise RuntimeError(err)
+        if code == 0:
+            return len(stdout.decode().strip()) > 0
         logging.error(f"ffprobe error (code {code}): {stderr.decode(errors='replace')}")
-        return False
-    return len(stdout.decode().strip()) > 0
+
+    _code, output = await _probe_with_ffmpeg(file_path)
+    return bool(re.search(r"Stream #\S+.*Audio:", output))
 
 
 async def process_media(input_path, output_path, variant=1, is_photo=False):
@@ -498,7 +540,7 @@ async def main():
         for e in errors:
             logging.error("  • " + e)
         logging.error("=========================================")
-        _need_ffmpeg = any(e.startswith("ffmpeg") or e.startswith("ffprobe") for e in errors)
+        _need_ffmpeg = any(e.startswith("ffmpeg") for e in errors)
         _need_media = any(("не найден" in e) and ("BASE_VIDEO" in e or "SPIDER_SOUNDS" in e) for e in errors)
         if _need_ffmpeg:
             logging.error(FFMPEG_INSTALL_HINT)
@@ -507,7 +549,7 @@ async def main():
         raise RuntimeError("Ошибки конфигурации: " + "; ".join(errors))
 
     logging.info(f"Using ffmpeg:  {_ff}")
-    logging.info(f"Using ffprobe: {_fp}")
+    logging.info(f"Using ffprobe: {_fp or 'fallback via ffmpeg'}")
     logging.info(f"Media dir:     {MEDIA_DIR}")
     logging.info(f"Output dir:    {OUTPUT_DIR}")
     logging.info(f"Base videos:   {BASE_VIDEO_1}, {BASE_VIDEO_2}, {BASE_VIDEO_3}")
